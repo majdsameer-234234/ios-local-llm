@@ -2956,6 +2956,8 @@ actor LocalAPIServer {
             await listOpenAIModels(connection)
         case ("GET", "/v1/aider/config"):
             await aiderConfiguration(connection)
+        case ("GET", "/v1/system"):
+            await systemStatus(connection)
         case ("POST", "/v1/chat/completions"):
             await run(
                 request,
@@ -4540,6 +4542,7 @@ actor LocalAPIServer {
                 "/v1/models",
                 "/v1/models/{model}",
                 "/v1/aider/config",
+                "/v1/system",
                 "/v1/chat/completions",
                 "/v1/responses",
                 "/v1/messages",
@@ -4557,6 +4560,49 @@ actor LocalAPIServer {
             contentType: "application/json",
             data: payload
         )
+    }
+
+    /// Runtime telemetry for a LAN client: the same numbers the app shows on
+    /// its own on-device debugger, in one body. Read-only, authenticated like
+    /// every other route, and cheap — no model work happens here, so it stays
+    /// safe to poll while a generation is running.
+    private func systemStatus(_ connection: NWConnection) async {
+        let snapshot: [String: Any] = await MainActor.run {
+            let model = CodingAssistantService.shared.activeModel
+            let profile = LlamaCppVLMExecutionProfile.resolve(repoID: model.repoID)
+            return [
+                "object": "system.status",
+                "model": model.repoID,
+                "model_id": model.id,
+                "context_size": Int(profile.contextSize),
+                "device_total_ram": Int(MemoryAdvisor.deviceTotalRAM),
+                "process_ceiling": Int(MemoryAdvisor.processMemoryCeiling),
+                "headroom": Int(MemoryAdvisor.processAvailableMemory),
+                "footprint": Int(MemoryAdvisor.physFootprint),
+                "model_budget": Int(MemoryAdvisor.availableMemoryForModel),
+                "increased_memory_limit": MemoryAdvisor.hasIncreasedMemoryLimitEntitlement,
+                "thermal_state": Self.thermalStateName(ProcessInfo.processInfo.thermalState),
+                "low_power_mode": ProcessInfo.processInfo.isLowPowerModeEnabled,
+                "heavy_work_blocked": DeviceSafetyMonitor.shared.shouldStopHeavyWork
+            ] as [String: Any]
+        }
+        let payload = LocalAPIResponse.json(snapshot)
+        await respond(
+            connection,
+            status: 200,
+            contentType: "application/json",
+            data: payload
+        )
+    }
+
+    private static func thermalStateName(_ state: ProcessInfo.ThermalState) -> String {
+        switch state {
+        case .nominal: return "nominal"
+        case .fair: return "fair"
+        case .serious: return "serious"
+        case .critical: return "critical"
+        @unknown default: return "unknown"
+        }
     }
 
     private func retrieveOpenAIModel(

@@ -1074,6 +1074,19 @@ struct SettingsView: View {
             .padding(.bottom, 10)
 
             Rectangle().fill(T.rule).frame(height: 1)
+            VStack(alignment: .leading, spacing: 6) {
+                KMono(text: "GGUF context window", size: 11, color: T.ink3, mono: false)
+                Stepper("\(settings.ggufContextLength) tokens",
+                        value: $settings.ggufContextLength,
+                        in: 2_048...8_192,
+                        step: 2_048)
+                KMono(text: "Longer chats need more RAM. Applies the next time a GGUF model loads.",
+                      size: 10, color: T.ink3, mono: false)
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
+
+            Rectangle().fill(T.rule).frame(height: 1)
             // On-device RAG over the user's own files — chat with your
             // documents/codebase, fully offline.
             Button { showingKnowledgeBase = true } label: {

@@ -86,6 +86,14 @@ final class AppSettings: ObservableObject {
     @AppStorage("showContextWindowBar")    var showContextWindowBar: Bool = true
     /// Warn when input exceeds this fraction of the context window.
     @AppStorage("contextWindowWarnFraction") var contextWindowWarnFraction: Double = 0.75
+    /// User-selected GGUF context window. The llama.cpp runtime previously
+    /// hard-coded 4096 (1024 for Gemma 3 vision) inside
+    /// `LlamaCppVLMExecutionProfile`, so the value could not be changed
+    /// anywhere. Kept inside a deliberately narrow range: below 2K the
+    /// assistant prompt no longer fits, and above 8K the KV cache growth
+    /// outpaces what `MemoryAdvisor` budgets for a 4B model on a phone.
+    /// Applies on the next model load; an active context is not resized.
+    @AppStorage("ggufContextLength") var ggufContextLength: Int = 4096
     /// User-selected default assistant model ID. New conversations and cold
     /// launches start here; an individual conversation may temporarily use a
     /// different model without overwriting this preference.

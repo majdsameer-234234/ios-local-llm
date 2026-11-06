@@ -20,11 +20,18 @@ git -C "$repository_root" submodule update --init --recursive
 llama_root="${repository_root}/ThirdParty/llama.cpp"
 llama_patch="${repository_root}/Patches/llama.cpp-ios-only-xcframework.patch"
 
-if grep -q 'IOS_ONLY:-0' "${llama_root}/build-xcframework.sh"; then
+# Upstream added explicit target selection (BUILDS=("$@")), so a newer pin
+# needs no local patch. The tracked patch is kept for older pins only.
+if grep -q 'BUILDS=("\$@")' "${llama_root}/build-xcframework.sh"; then
+  echo "==> llama.cpp supports explicit iOS targets (no patch needed)"
+  LLAMA_IOS_BUILD=("./build-xcframework.sh" "ios-sim" "ios-device")
+elif grep -q 'IOS_ONLY:-0' "${llama_root}/build-xcframework.sh"; then
   echo "==> llama.cpp iOS-only build support is already present"
+  LLAMA_IOS_BUILD=("env" "IOS_ONLY=1" "./build-xcframework.sh")
 elif git -C "$llama_root" apply --check "$llama_patch" >/dev/null 2>&1; then
   echo "==> Applying the tracked llama.cpp iOS-only build patch"
   git -C "$llama_root" apply "$llama_patch"
+  LLAMA_IOS_BUILD=("env" "IOS_ONLY=1" "./build-xcframework.sh")
 else
   echo "error: the llama.cpp build patch does not match the pinned submodule" >&2
   echo "       restore or inspect ThirdParty/llama.cpp/build-xcframework.sh" >&2

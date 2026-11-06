@@ -1,0 +1,54 @@
+workflows:
+  ondevice-las-unsigned-ipa:
+    name: OnDevice LAS (unsigned IPA, no Apple account)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Submodules
+        script: |
+          git submodule update --init --recursive
+
+      - name: Tooling
+        script: |
+          brew install xcodegen
+          xcodegen --version
+
+      - name: Native frameworks (llama.cpp + whisper.cpp)
+        script: |
+          ./scripts/build_native_frameworks.sh
+
+      - name: Generate project and pods
+        script: |
+          xcodegen generate
+          pod install --repo-update
+
+      - name: Archive unsigned
+        script: |
+          set -o pipefail
+          xcodebuild \
+            -workspace OnDeviceLAS.xcworkspace \
+            -scheme OnDeviceLAS \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/OnDeviceLAS.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            archive
+
+      - name: Package IPA
+        script: |
+          set -e
+          mkdir -p build/ipa/Payload
+          cp -R build/OnDeviceLAS.xcarchive/Products/Applications/OnDeviceLAS.app build/ipa/Payload/
+          cd build/ipa
+          /usr/bin/zip -qry ../OnDeviceLAS-unsigned.ipa Payload
+          cd ../..
+          ls -lh build/OnDeviceLAS-unsigned.ipa
+
+    artifacts:
+      - build/OnDeviceLAS-unsigned.ipa
