@@ -16,6 +16,10 @@ workflows:
           brew install xcodegen
           xcodegen --version
 
+      - name: Metal toolchain (mlx-swift shader compile)
+        script: |
+          xcodebuild -downloadComponent MetalToolchain
+
       - name: Native frameworks (llama.cpp + whisper.cpp)
         script: |
           ./scripts/build_native_frameworks.sh
