@@ -2958,6 +2958,8 @@ actor LocalAPIServer {
             await aiderConfiguration(connection)
         case ("GET", "/v1/system"):
             await systemStatus(connection)
+        case ("POST", "/v1/system"):
+            await systemControl(request, connection: connection)
         case ("POST", "/v1/chat/completions"):
             await run(
                 request,
@@ -4587,6 +4589,43 @@ actor LocalAPIServer {
             ] as [String: Any]
         }
         let payload = LocalAPIResponse.json(snapshot)
+        await respond(
+            connection,
+            status: 200,
+            contentType: "application/json",
+            data: payload
+        )
+    }
+
+    /// Control endpoint for LAN clients. The LAS build ships no settings
+    /// screen, so context length has to be set from outside the app: persist
+    /// the choice, then unload so the next request loads with it.
+    private func systemControl(_ request: HTTPRequest, connection: NWConnection) async {
+        guard request.headers["content-type"]?.lowercased().hasPrefix("application/json") == true,
+              let body = request.body,
+              let raw = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            await error(connection, status: 400, message: "JSON body required", dialect: .openAIChat)
+            return
+        }
+
+        var applied: [String: Any] = [:]
+        let requested = (raw["context_size"] as? Int)
+            ?? (raw["context_size"] as? String).flatMap(Int.init)
+
+        if let requested {
+            let clamped = min(max(requested, 2_048), 8_192)
+            UserDefaults.standard.set(clamped, forKey: "ggufContextLength")
+            await MainActor.run { CodingAssistantService.shared.unload() }
+            applied["context_size"] = clamped
+            applied["requested_context_size"] = requested
+            applied["clamped"] = clamped != requested
+            applied["applies"] = "next model load (the model was unloaded)"
+        } else {
+            applied["context_size"] = Int(LlamaCppVLMExecutionProfile.userContextSize)
+            applied["applies"] = "current setting"
+        }
+
+        let payload = LocalAPIResponse.json(applied)
         await respond(
             connection,
             status: 200,
