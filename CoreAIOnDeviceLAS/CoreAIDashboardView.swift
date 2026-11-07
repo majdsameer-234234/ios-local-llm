@@ -140,15 +140,14 @@ struct CoreAIDashboardView: View {
             Text("How much history the model keeps. Takes effect the next time a model loads.")
                 .font(.caption)
                 .foregroundStyle(.white.opacity(0.6))
-            Picker("Context", selection: Binding(
+            Stepper(value: Binding(
                 get: { settings.ggufContextLength },
                 set: { settings.ggufContextLength = $0 }
-            )) {
-                ForEach([2048, 4096, 8192, 16384, 32768, 65536], id: \.self) { value in
-                    Text("\(value / 1024)K").tag(value)
-                }
+            ), in: 512...1_048_576, step: 8_192) {
+                Text("\(settings.ggufContextLength) tokens (\(settings.ggufContextLength / 1024)K)")
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
             }
-            .pickerStyle(.segmented)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
