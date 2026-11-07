@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +26,7 @@ jobs:
       - name: Toolchain
         run: |
           xcodebuild -version
+          xcodebuild -showsdks | tail -5
           pod --version || true
           sw_vers
 
