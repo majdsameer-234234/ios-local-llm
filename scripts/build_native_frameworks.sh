@@ -38,20 +38,24 @@ else
   exit 1
 fi
 
+# A restored build cache leaves these in place. Rebuilding them is the single
+# most expensive step of a CI run (llama.cpp plus whisper.cpp for two Apple
+# slices), so an existing framework is reused instead of treated as an error.
+whisper_root="${repository_root}/ThirdParty/whisper.cpp"
+
 if [[ -e "${llama_root}/build-apple/llama.xcframework" ]]; then
-  echo "error: generated llama.xcframework already exists; remove it before rebuilding" >&2
-  exit 1
-fi
-if [[ -e "${repository_root}/ThirdParty/whisper.cpp/build-apple/whisper.xcframework" ]]; then
-  echo "error: generated whisper.xcframework already exists; remove it before rebuilding" >&2
-  exit 1
+  echo "==> llama.xcframework already present; skipping the rebuild"
+else
+  echo "==> Building llama.cpp iOS XCFramework"
+  (cd "$llama_root" && IOS_ONLY=1 ./build-xcframework.sh)
 fi
 
-echo "==> Building llama.cpp iOS XCFramework"
-(cd "$llama_root" && IOS_ONLY=1 ./build-xcframework.sh)
-
-echo "==> Building whisper.cpp iOS XCFramework"
-"${repository_root}/scripts/native/build_whisper_ios.sh"
+if [[ -e "${whisper_root}/build-apple/whisper.xcframework" ]]; then
+  echo "==> whisper.xcframework already present; skipping the rebuild"
+else
+  echo "==> Building whisper.cpp iOS XCFramework"
+  "${repository_root}/scripts/native/build_whisper_ios.sh"
+fi
 
 if [[ "$include_catalyst" == 1 ]]; then
   "${repository_root}/scripts/native/build_catalyst_slice.sh" llama

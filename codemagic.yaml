@@ -12,5 +12,11 @@ workflows:
           set -euo pipefail
           chmod +x CODEMAGIC_BUILD_SCRIPT.sh
           ./CODEMAGIC_BUILD_SCRIPT.sh
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/CocoaPods
+        - $HOME/Library/Developer/Xcode/DerivedData
+        - $CM_BUILD_DIR/ThirdParty/llama.cpp/build-apple
+        - $CM_BUILD_DIR/ThirdParty/whisper.cpp/build-apple
     artifacts:
       - build/OnDeviceLAS-unsigned.ipa

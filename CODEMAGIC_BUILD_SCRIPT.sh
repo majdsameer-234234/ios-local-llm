@@ -19,12 +19,22 @@ cd ../..
 #    again, regenerate from `git diff <base> main -- <files>` in UTF-8 only.
 
 # 3. native frameworks (iOS slices only)
-./scripts/build_native_frameworks.sh
+#    The xcframeworks are restored by the Codemagic cache when the pinned
+#    submodules have not changed, so this step is normally a no-op. Building
+#    llama.cpp + whisper.cpp from scratch is what made every build ~20 minutes.
+LLAMA_XCF=ThirdParty/llama.cpp/build-apple/llama.xcframework
+WHISPER_XCF=ThirdParty/whisper.cpp/build-apple/whisper.xcframework
+if [[ -d "$LLAMA_XCF" && -d "$WHISPER_XCF" ]]; then
+  echo "==> native frameworks restored from cache; skipping the rebuild"
+else
+  ./scripts/build_native_frameworks.sh
+fi
 
 # 4. project + pods
 brew install xcodegen
 xcodegen generate
-pod install --repo-update
+# Podfile.lock is committed, so the spec repo update is pure cost.
+pod install
 
 # 4b. Metal toolchain: mlx-swift shader compile fails without it.
 #     This line was lost when 6f05e63 regenerated the script - the
