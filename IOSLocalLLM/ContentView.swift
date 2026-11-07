@@ -658,6 +658,9 @@ private struct LASHomeServerCard: View {
     /// (`ggufContextLength`), so the value here is the value llama.cpp gets.
     /// No upper clamp on purpose: the machine, not the UI, decides the ceiling.
     @AppStorage("ggufContextLength") private var contextTokens = 4_096
+    /// KV cache precision for GGUF models. Same key the llama.cpp bridge reads
+    /// (`ggufKVCacheType`); q8_0 / q4_0 also switch Flash Attention on there.
+    @AppStorage("ggufKVCacheType") private var kvCacheType = "f16"
 
     var body: some View {
         VStack(alignment: .leading, spacing: LASDesignTokens.component) {
@@ -873,6 +876,24 @@ private struct LASHomeServerCard: View {
                 }
                 .padding(.vertical, 2)
             }
+
+            VStack(alignment: .leading, spacing: LASDesignTokens.tight) {
+                Text("KV cache precision")
+                    .font(.callout)
+                Picker("KV cache precision", selection: $kvCacheType) {
+                    Text("f16").tag("f16")
+                    Text("q8_0").tag("q8_0")
+                    Text("q4_0").tag("q4_0")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("KV cache precision")
+                .accessibilityHint("Quantising the KV cache trades a little precision for a much longer context")
+            }
+
+            Text("q8_0 roughly halves the KV cache, q4_0 quarters it, so the same phone holds a longer context. Both switch Flash Attention on automatically. f16 is the default and the most accurate.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text("Takes effect the next time a model loads. The KV cache grows with this - about 4 KB per token across the full-attention layers of Spark-X2.6 - and the loader refuses what the phone cannot hold.")
                 .font(.caption)
