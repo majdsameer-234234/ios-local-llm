@@ -183,7 +183,7 @@ final class LlamaCppVLM: @unchecked Sendable {
         ctxParams.n_ubatch = 512
         ctxParams.n_threads = nThreads
         ctxParams.n_threads_batch = nThreads
-        Self.applyKVCacheType(to: &ctxParams)
+        Self.applyKVCacheType(&ctxParams)
         guard let c = llama_init_from_model(m, ctxParams) else {
             llama_model_free(m)
             self.model = nil
@@ -419,7 +419,7 @@ final class LlamaCppVLM: @unchecked Sendable {
         requestParams.n_ubatch = UInt32(physicalBatchSize)
         requestParams.n_threads = configuredThreads
         requestParams.n_threads_batch = configuredThreads
-        Self.applyKVCacheType(to: &requestParams)
+        Self.applyKVCacheType(&requestParams)
         guard let c = llama_init_from_model(m, requestParams) else {
             throw LlamaCppError.contextInitFailed
         }
@@ -613,6 +613,7 @@ final class LlamaCppVLM: @unchecked Sendable {
         //    iteration. EOS or maxTokens or cancel ends the loop.
         let startTime = Date()
         var tokensGenerated = 0
+        var reachedEndOfGeneration = false
         let vocab = llama_model_get_vocab(m)
         var batch = llama_batch_init(1, 0, 1)
         defer { llama_batch_free(batch) }
