@@ -4577,6 +4577,7 @@ actor LocalAPIServer {
                 "model": model.repoID,
                 "model_id": model.id,
                 "context_size": Int(profile.contextSize),
+                "kv_cache": UserDefaults.standard.string(forKey: "ggufKVCacheType") ?? "f16",
                 "device_total_ram": Int(MemoryAdvisor.deviceTotalRAM),
                 "process_ceiling": Int(MemoryAdvisor.processMemoryCeiling),
                 "headroom": Int(MemoryAdvisor.processAvailableMemory),
@@ -4625,6 +4626,25 @@ actor LocalAPIServer {
         } else {
             applied["context_size"] = Int(LlamaCppVLMExecutionProfile.userContextSize)
             applied["applies"] = "current setting"
+        }
+
+        if let kv = (raw["kv_cache"] as? String)?.lowercased() {
+            let allowed = ["f16", "q8_0", "q4_0"]
+            guard allowed.contains(kv) else {
+                await error(
+                    connection,
+                    status: 400,
+                    message: "kv_cache must be one of f16, q8_0, q4_0",
+                    dialect: .openAIChat
+                )
+                return
+            }
+            UserDefaults.standard.set(kv, forKey: "ggufKVCacheType")
+            await MainActor.run { CodingAssistantService.shared.unload() }
+            applied["kv_cache"] = kv
+            applied["kv_cache_applies"] = "next model load (the model was unloaded)"
+        } else {
+            applied["kv_cache"] = UserDefaults.standard.string(forKey: "ggufKVCacheType") ?? "f16"
         }
 
         let payload = LocalAPIResponse.json(applied)

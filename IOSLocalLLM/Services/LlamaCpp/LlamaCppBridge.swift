@@ -183,6 +183,7 @@ final class LlamaCppVLM: @unchecked Sendable {
         ctxParams.n_ubatch = 512
         ctxParams.n_threads = nThreads
         ctxParams.n_threads_batch = nThreads
+        Self.applyKVCacheType(to: &ctxParams)
         guard let c = llama_init_from_model(m, ctxParams) else {
             llama_model_free(m)
             self.model = nil
@@ -418,6 +419,7 @@ final class LlamaCppVLM: @unchecked Sendable {
         requestParams.n_ubatch = UInt32(physicalBatchSize)
         requestParams.n_threads = configuredThreads
         requestParams.n_threads_batch = configuredThreads
+        Self.applyKVCacheType(to: &requestParams)
         guard let c = llama_init_from_model(m, requestParams) else {
             throw LlamaCppError.contextInitFailed
         }
@@ -731,6 +733,24 @@ final class LlamaCppVLM: @unchecked Sendable {
     /// mtmd media marker inside the user content. This mirrors
     /// llama-mtmd-cli's single-turn path and is especially important for
     /// SmolVLM/SmolVLM2, whose `<|im_start|>` token is BOS rather than ChatML.
+    /// KV cache precision. At f16 Spark's cache costs about 4 KB per token per
+    /// layer, so this is what makes long contexts reachable on a phone. A
+    /// quantised V cache requires Flash Attention, so it is switched on with it.
+    private static func applyKVCacheType(_ params: inout llama_context_params) {
+        switch UserDefaults.standard.string(forKey: "ggufKVCacheType") ?? "f16" {
+        case "q8_0":
+            params.type_k = GGML_TYPE_Q8_0
+            params.type_v = GGML_TYPE_Q8_0
+            params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+        case "q4_0":
+            params.type_k = GGML_TYPE_Q4_0
+            params.type_v = GGML_TYPE_Q4_0
+            params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+        default:
+            break
+        }
+    }
+
     private static func formatPrompt(
         _ prompt: String,
         marker: String,
