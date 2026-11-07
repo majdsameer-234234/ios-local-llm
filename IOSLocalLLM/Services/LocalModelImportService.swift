@@ -96,8 +96,9 @@ final class LocalModelImportService: ObservableObject {
         var isDir: ObjCBool = false
         FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
 
-        if url.pathExtension.lowercased() == "zip" {
-            // Unzip into dest
+        if url.pathExtension.lowercased() == "zip" || Self.magic(of: url) == "504B0304" {
+            // Unzip into dest. Mirror downloads and "save link as" flows often
+            // hand back a ZIP wearing a .gguf extension; only the bytes say so.
             try await unzip(url, to: dest)
         } else {
             // A multi-GB GGUF copy can take minutes. FileManager.copyItem is
@@ -157,10 +158,11 @@ final class LocalModelImportService: ObservableObject {
         // `isReady`). Roll back the copied bytes so a half-recognized folder
         // doesn't linger as dead weight.
         guard downloader.state == .ready else {
+            let inventory = Self.inventory(of: dest)
             try? FileManager.default.removeItem(at: dest)
             throw NSError(domain: "LocalImport", code: -2, userInfo: [
                 NSLocalizedDescriptionKey:
-                    "Couldn't find a usable model in “\(cleaned)”. Import an MLX folder containing config.json plus .safetensors weights, a standalone text .gguf, or a vision GGUF paired with its mmproj-*.gguf file."
+                    "Couldn't find a usable model in “\(cleaned)”. Import an MLX folder containing config.json plus .safetensors weights, a standalone text .gguf, or a vision GGUF paired with its mmproj-*.gguf file. Found: \(Self.inventory(of: dest))."
             ])
         }
 
@@ -190,6 +192,32 @@ final class LocalModelImportService: ObservableObject {
     }
 
     // MARK: - Helpers
+
+    /// First four bytes of a file, hex encoded. `GGUF` is 47475546.
+    private static func magic(of url: URL) -> String {
+        guard let handle = try? FileHandle(forReadingFrom: url),
+              let head = try? handle.read(upToCount: 4),
+              head.count == 4 else { return "----" }
+        try? handle.close()
+        return head.map { String(format: "%02X", $0) }.joined()
+    }
+
+    /// What the imported folder actually holds. Without this the only symptom
+    /// of a broken download was "couldn't find a usable model", which says
+    /// nothing about whether the file was truncated, zipped or an HTML page.
+    private static func inventory(of dir: URL) -> String {
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ), !items.isEmpty else {
+            return "nothing"
+        }
+        return items.prefix(4).map { item in
+            let size = (try? item.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            return "\(item.lastPathComponent) · \(Int64(size).formattedBytes) · starts \(magic(of: item))"
+        }.joined(separator: " | ")
+    }
 
     private func dirSize(at url: URL) -> Int64 {
         (try? FileManager.default.allocatedSizeOfDirectory(at: url)) ?? 0
