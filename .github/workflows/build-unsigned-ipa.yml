@@ -1,0 +1,44 @@
+name: Build unsigned IPA
+
+# Codemagic started rejecting builds on this account (free minutes), so the same
+# script runs here instead. GitHub-hosted macOS is free on public repositories,
+# which this one is.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          pod --version || true
+          sw_vers
+
+      - name: Build IPA
+        run: |
+          chmod +x CODEMAGIC_BUILD_SCRIPT.sh
+          ./CODEMAGIC_BUILD_SCRIPT.sh
+
+      - name: Upload IPA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OnDeviceLAS-unsigned
+          path: build/OnDeviceLAS-unsigned.ipa
+          if-no-files-found: warn
+          retention-days: 14
