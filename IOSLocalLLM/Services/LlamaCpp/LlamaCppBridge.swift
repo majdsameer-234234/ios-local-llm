@@ -487,7 +487,14 @@ final class LlamaCppVLM: @unchecked Sendable {
                     pendingUTF8.append(UInt8(bitPattern: pieceBuffer[index]))
                 }
                 let piece = Self.consumeCompleteUTF8Prefix(&pendingUTF8)
-                if !piece.isEmpty { onToken(piece) }
+                if !piece.isEmpty {
+                    let (clean, hitStop) = Self.splitStopMarker(piece)
+                    if !clean.isEmpty { onToken(clean) }
+                    if hitStop {
+                        reachedEndOfGeneration = true
+                        break
+                    }
+                }
             }
             tokensGenerated += 1
 
@@ -652,7 +659,14 @@ final class LlamaCppVLM: @unchecked Sendable {
                     pendingUTF8.append(UInt8(bitPattern: pieceBuf[index]))
                 }
                 let piece = Self.consumeCompleteUTF8Prefix(&pendingUTF8)
-                if !piece.isEmpty { onToken(piece) }
+                if !piece.isEmpty {
+                    let (clean, hitStop) = Self.splitStopMarker(piece)
+                    if !clean.isEmpty { onToken(clean) }
+                    if hitStop {
+                        reachedEndOfGeneration = true
+                        break
+                    }
+                }
             }
             tokensGenerated += 1
 
@@ -733,6 +747,24 @@ final class LlamaCppVLM: @unchecked Sendable {
     /// mtmd media marker inside the user content. This mirrors
     /// llama-mtmd-cli's single-turn path and is especially important for
     /// SmolVLM/SmolVLM2, whose `<|im_start|>` token is BOS rather than ChatML.
+    /// Control tokens some GGUFs never flag as end-of-generation. Without this
+    /// the model prints the marker and keeps replaying the whole thread, which
+    /// burns the single slot and shows up as `finish_reason: length`.
+    private static let hardStopMarkers = [
+        "<|im_end|>", "<|endoftext|>", "<|eot_id|>", "<|end|>",
+        "<|endofassistant|>", "</s>", "<|eot|>"
+    ]
+
+    /// Text before the first stop marker, plus whether one was hit.
+    private static func splitStopMarker(_ piece: String) -> (String, Bool) {
+        for marker in hardStopMarkers {
+            if let range = piece.range(of: marker) {
+                return (String(piece[piece.startIndex..<range.lowerBound]), true)
+            }
+        }
+        return (piece, false)
+    }
+
     /// KV cache precision. At f16 Spark's cache costs about 4 KB per token per
     /// layer, so this is what makes long contexts reachable on a phone. A
     /// quantised V cache requires Flash Attention, so it is switched on with it.
