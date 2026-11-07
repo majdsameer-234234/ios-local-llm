@@ -112,6 +112,79 @@ enum LocalModelFileValidator {
         return ggufs.contains(where: isValidGGUFFile)
     }
 
+    /// A four-byte magic check calls a truncated download valid, and the load
+    /// then fails minutes later with no explanation. Walk the header instead:
+    /// metadata, tensor table, and the highest tensor offset must land inside
+    /// the file.
+    static func hasIntactGGUFStructure(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber,
+              size.int64Value > 1024 else { return false }
+        let fileSize = size.int64Value
+
+        func read(_ count: Int) -> Data? {
+            guard count > 0, let d = try? handle.read(upToCount: count), d.count == count else {
+                return nil
+            }
+            return d
+        }
+        func u32(_ d: Data) -> UInt32 { d.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) } }
+        func u64(_ d: Data) -> UInt64 { d.withUnsafeBytes { $0.loadUnaligned(as: UInt64.self) } }
+
+        guard let magic = read(4), magic == Data([0x47, 0x47, 0x55, 0x46]),
+              let vRaw = read(4), u32(vRaw) == 3,
+              let tcRaw = read(8),
+              let kcRaw = read(8) else { return false }
+
+        let tensorCount = Int(u64(tcRaw))
+        let kvCount = Int(u64(kcRaw))
+        guard tensorCount > 0, tensorCount < 100_000, kvCount < 100_000 else { return false }
+
+        func skipString() -> Bool {
+            guard let lenRaw = read(8) else { return false }
+            let len = Int(u64(lenRaw))
+            guard len >= 0, len < 1 << 24 else { return false }
+            return len == 0 || read(len) != nil
+        }
+        func skipValue(_ type: UInt32) -> Bool {
+            switch type {
+            case 0, 1, 7:               return read(1) != nil
+            case 2, 3:                  return read(2) != nil
+            case 4, 5, 6:               return read(4) != nil
+            case 10, 11, 12:            return read(8) != nil
+            case 8:                     return skipString()
+            case 9:
+                guard let t = read(4), let c = read(8) else { return false }
+                let elementType = u32(t), count = Int(u64(c))
+                guard count >= 0, count < 10_000_000 else { return false }
+                for _ in 0..<count where !skipValue(elementType) { return false }
+                return true
+            default:                    return false
+            }
+        }
+
+        for _ in 0..<kvCount {
+            guard skipString(), let t = read(4), skipValue(u32(t)) else { return false }
+        }
+
+        var highestOffset: UInt64 = 0
+        for _ in 0..<tensorCount {
+            guard skipString(),
+                  let dimsRaw = read(4),
+                  let offRaw = read(8) else { return false }
+            let dims = Int(u32(dimsRaw))
+            guard dims >= 0, dims <= 4 else { return false }
+            for _ in 0..<dims where read(8) == nil { return false }
+            guard read(4) != nil else { return false }
+            highestOffset = max(highestOffset, u64(offRaw))
+        }
+
+        let position = (try? handle.offsetInFile) ?? 0
+        let dataStart = Int64(position) + 32
+        return Int64(highestOffset) < fileSize - dataStart
+    }
+
     static func isValidGGUFFile(_ url: URL) -> Bool {
         guard isNonEmptyFile(url),
               let handle = try? FileHandle(forReadingFrom: url) else { return false }
