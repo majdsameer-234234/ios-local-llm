@@ -654,6 +654,11 @@ private struct LASHomeServerCard: View {
     let onRotateKey: () -> Void
     let onCopySetup: () -> Void
 
+    /// Context window for GGUF models. Stored under the key the runtime reads
+    /// (`ggufContextLength`), so the value here is the value llama.cpp gets.
+    /// No upper clamp on purpose: the machine, not the UI, decides the ceiling.
+    @AppStorage("ggufContextLength") private var contextTokens = 4_096
+
     var body: some View {
         VStack(alignment: .leading, spacing: LASDesignTokens.component) {
             VStack(alignment: .leading, spacing: LASDesignTokens.component) {
@@ -664,6 +669,9 @@ private struct LASHomeServerCard: View {
             .lasCard(radius: LASDesignTokens.majorRadius)
 
             modelSection
+                .lasCard()
+
+            contextSection
                 .lasCard()
 
             LASModelCapabilitySection(profile: capabilityProfile)
@@ -826,6 +834,68 @@ private struct LASHomeServerCard: View {
 
     private var selectedParallelToolCalls: LocalAPIParallelToolCallsSetting {
         LocalAPIParallelToolCallsSetting(rawValue: parallelToolCallsLimit) ?? .automaticTwo
+    }
+
+    private var contextSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            LASSectionLabel(title: "CONTEXT WINDOW")
+
+            HStack(spacing: LASDesignTokens.tight) {
+                Text("Model context")
+                Spacer(minLength: LASDesignTokens.tight)
+                Text(contextLabel)
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minHeight: 44)
+
+            Stepper(value: $contextTokens, in: 512...1_048_576, step: 8_192) {
+                Text("\(contextTokens) tokens")
+                    .font(.callout.monospacedDigit())
+            }
+            .accessibilityLabel("Model context length in tokens")
+            .accessibilityValue(contextLabel)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(contextPresets, id: \.self) { preset in
+                        Button {
+                            contextTokens = preset
+                        } label: {
+                            Text(presetLabel(preset))
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(contextTokens == preset ? Color.accentColor : Color.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+
+            Text("Takes effect the next time a model loads. The KV cache grows with this - about 4 KB per token across the full-attention layers of Spark-X2.6 - and the loader refuses what the phone cannot hold.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("The value the server reports at GET /v1/models and GET /v1/system is this one.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var contextPresets: [Int] {
+        [4_096, 8_192, 16_384, 32_768, 65_536, 131_072, 262_144, 524_288, 1_048_576]
+    }
+
+    private var contextLabel: String {
+        contextTokens >= 1_024 ? "\(contextTokens / 1_024)K tokens" : "\(contextTokens) tokens"
+    }
+
+    private func presetLabel(_ value: Int) -> String {
+        value >= 1_024 ? "\(value / 1_024)K" : "\(value)"
     }
 
     private var settingsSection: some View {

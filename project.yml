@@ -159,7 +159,7 @@ targets:
         # writes these into the generated Info.plist files on every run,
         # so hand-edits to those plists get reverted next regen — always
         # bump HERE first, then `xcodegen` to propagate.
-        CFBundleShortVersionString: "3.2.6"
+        CFBundleShortVersionString: "3.2.7"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         # Standard HTTPS only — answers the ASC export-compliance question
         # automatically so review submission doesn't stall on it.
@@ -185,7 +185,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: IOSLocalLLM/IOSLocalLLM.entitlements
         CODE_SIGN_STYLE: Automatic
         VERSIONING_SYSTEM: apple-generic
-        CURRENT_PROJECT_VERSION: "146"
+        CURRENT_PROJECT_VERSION: "147"
         # iPhone-only server surface.
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
@@ -335,7 +335,7 @@ targets:
       path: CoreAIOnDeviceLAS/Info.plist
       properties:
         CFBundleDisplayName: "Core AI: LAS"
-        CFBundleShortVersionString: "3.2.6"
+        CFBundleShortVersionString: "3.2.7"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         ITSAppUsesNonExemptEncryption: false
         NSLocalNetworkUsageDescription: "Core AI: LAS exposes your selected on-device Core AI model to trusted computers on your local network."
