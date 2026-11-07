@@ -113,6 +113,7 @@ struct CoreAIDashboardView: View {
                         serverCard
                         shareCard
                         controlsCard
+                        contextCard
                         compatibilityCard
                         endpointsCard
                     }
@@ -129,6 +130,29 @@ struct CoreAIDashboardView: View {
                 )
             }
         }
+    }
+
+    private var contextCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Model context")
+                .font(.headline)
+                .foregroundStyle(.white)
+            Text("How much history the model keeps. Takes effect the next time a model loads.")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.6))
+            Picker("Context", selection: Binding(
+                get: { settings.ggufContextLength },
+                set: { settings.ggufContextLength = $0 }
+            )) {
+                ForEach([2048, 4096, 8192, 16384, 32768, 65536], id: \.self) { value in
+                    Text("\(value / 1024)K").tag(value)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var header: some View {
