@@ -4613,12 +4613,14 @@ actor LocalAPIServer {
             ?? (raw["context_size"] as? String).flatMap(Int.init)
 
         if let requested {
-            let clamped = min(max(requested, 2_048), 8_192)
-            UserDefaults.standard.set(clamped, forKey: "ggufContextLength")
+            // No upper clamp on purpose: choosing the context length against a
+            // real device is the user's experiment, not a product decision.
+            // Only a floor, because 0 or negative cannot create a context.
+            let value = max(requested, 512)
+            UserDefaults.standard.set(value, forKey: "ggufContextLength")
             await MainActor.run { CodingAssistantService.shared.unload() }
-            applied["context_size"] = clamped
+            applied["context_size"] = value
             applied["requested_context_size"] = requested
-            applied["clamped"] = clamped != requested
             applied["applies"] = "next model load (the model was unloaded)"
         } else {
             applied["context_size"] = Int(LlamaCppVLMExecutionProfile.userContextSize)

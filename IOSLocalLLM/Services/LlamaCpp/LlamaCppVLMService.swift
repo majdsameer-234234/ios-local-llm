@@ -37,13 +37,13 @@ struct LlamaCppVLMExecutionProfile: Equatable, Sendable {
     ///
     /// Read straight from `UserDefaults` rather than `AppSettings.shared` so
     /// this resolver stays callable off the main actor (it is used by model
-    /// fit checks and by the local API's model metadata). The range clamp is
-    /// the contract: a stale or hand-edited default can never ask llama.cpp
-    /// for an allocation the phone cannot survive.
+    /// fit checks and by the local API's model metadata). No upper bound: the
+    /// caller decides how far to push the device, and llama.cpp plus the
+    /// memory gates report the real limit at load time.
     static var userContextSize: UInt32 {
         let stored = UserDefaults.standard.object(forKey: "ggufContextLength") as? Int
         let requested = stored ?? 4_096
-        return UInt32(min(max(requested, 2_048), 8_192))
+        return UInt32(max(requested, 512))
     }
 }
 
