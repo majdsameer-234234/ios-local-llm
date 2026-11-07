@@ -2958,6 +2958,8 @@ actor LocalAPIServer {
             await aiderConfiguration(connection)
         case ("GET", "/v1/system"):
             await systemStatus(connection)
+        case ("GET", "/v1/logs"):
+            await logTail(connection)
         case ("POST", "/v1/system"):
             await systemControl(request, connection: connection)
         case ("POST", "/v1/chat/completions"):
@@ -4572,21 +4574,40 @@ actor LocalAPIServer {
         let snapshot: [String: Any] = await MainActor.run {
             let model = CodingAssistantService.shared.activeModel
             let profile = LlamaCppVLMExecutionProfile.resolve(repoID: model.repoID)
+            let assistant = CodingAssistantService.shared
+            let info = Bundle.main.infoDictionary ?? [:]
+            let free = Self.diskFreeBytes()
             return [
                 "object": "system.status",
+                // model
                 "model": model.repoID,
                 "model_id": model.id,
+                "model_display": model.displayName,
                 "context_size": Int(profile.contextSize),
                 "kv_cache": UserDefaults.standard.string(forKey: "ggufKVCacheType") ?? "f16",
+                "tokens_per_second": assistant.tokenRate,
+                "estimated_input_tokens": assistant.estimatedInputTokens,
+                // memory
                 "device_total_ram": Int(MemoryAdvisor.deviceTotalRAM),
                 "process_ceiling": Int(MemoryAdvisor.processMemoryCeiling),
                 "headroom": Int(MemoryAdvisor.processAvailableMemory),
                 "footprint": Int(MemoryAdvisor.physFootprint),
                 "model_budget": Int(MemoryAdvisor.availableMemoryForModel),
                 "increased_memory_limit": MemoryAdvisor.hasIncreasedMemoryLimitEntitlement,
+                // device
+                "hardware": Self.machineIdentifier(),
+                "ios": UIDevice.current.systemVersion,
+                "app_version": info["CFBundleShortVersionString"] as? String ?? "",
+                "app_build": info["CFBundleVersion"] as? String ?? "",
+                "uptime_seconds": Int(ProcessInfo.processInfo.systemUptime),
+                // environment
                 "thermal_state": Self.thermalStateName(ProcessInfo.processInfo.thermalState),
                 "low_power_mode": ProcessInfo.processInfo.isLowPowerModeEnabled,
-                "heavy_work_blocked": DeviceSafetyMonitor.shared.shouldStopHeavyWork
+                "heavy_work_blocked": DeviceSafetyMonitor.shared.shouldStopHeavyWork,
+                // storage + api
+                "disk_free": Int(free),
+                "api_port": AppSettings.shared.localAPIPort,
+                "api_path": "/v1/system"
             ] as [String: Any]
         }
         let payload = LocalAPIResponse.json(snapshot)
@@ -4596,6 +4617,48 @@ actor LocalAPIServer {
             contentType: "application/json",
             data: payload
         )
+    }
+
+    /// Last entries of the on-device log over HTTP, so a failure can be read
+    /// from the laptop instead of exporting diagnostics on the phone.
+    private func logTail(_ connection: NWConnection) async {
+        let rows: [[String: Any]] = await MainActor.run {
+            let formatter = ISO8601DateFormatter()
+            return RuntimeLogCenter.shared.entries.suffix(200).map { entry in
+                [
+                    "ts": formatter.string(from: entry.timestamp),
+                    "level": String(describing: entry.level),
+                    "subsystem": entry.subsystem,
+                    "message": entry.message
+                ] as [String: Any]
+            }
+        }
+        let payload = LocalAPIResponse.json([
+            "object": "system.logs",
+            "count": rows.count,
+            "entries": rows
+        ] as [String: Any])
+        await respond(
+            connection,
+            status: 200,
+            contentType: "application/json",
+            data: payload
+        )
+    }
+
+    private static func diskFreeBytes() -> Int64 {
+        let attrs = try? FileManager.default.attributesOfFileSystem(
+            forPath: NSHomeDirectory()
+        )
+        return (attrs?[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+    }
+
+    private static func machineIdentifier() -> String {
+        var size = 0
+        sysctlbyname("hw.machine", nil, &size, nil, 0)
+        var machine = [CChar](repeating: 0, count: max(size, 1))
+        sysctlbyname("hw.machine", &machine, &size, nil, 0)
+        return String(cString: machine)
     }
 
     /// Control endpoint for LAN clients. The LAS build ships no settings
