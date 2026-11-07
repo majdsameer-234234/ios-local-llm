@@ -28,8 +28,13 @@ pod install --repo-update
 
 # 5. archive unsigned (no Apple account needed)
 set -o pipefail
+# Podfile pins OnDeviceLAS.xcodeproj -> pod install regenerates
+# OnDeviceLAS.xcworkspace. The checked-in IOSLocalLLM.xcworkspace is the
+# stale pre-rename one and has no OnDeviceLAS scheme:
+# "workspace named IOSLocalLLM does not contain scheme OnDeviceLAS"
+# killed the 14-minute build at 10:28 UTC on 2026-11-07.
 xcodebuild \
-  -workspace IOSLocalLLM.xcworkspace \
+  -workspace OnDeviceLAS.xcworkspace \
   -scheme OnDeviceLAS \
   -configuration Release \
   -sdk iphoneos \
