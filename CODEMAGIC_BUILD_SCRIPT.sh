@@ -26,6 +26,12 @@ brew install xcodegen
 xcodegen generate
 pod install --repo-update
 
+# 4b. Metal toolchain: mlx-swift shader compile fails without it.
+#     This line was lost when 6f05e63 regenerated the script - the
+#     11:46 UTC build died on "cannot execute tool 'metal' due to
+#     missing Metal Toolchain". Keep it.
+xcodebuild -downloadComponent MetalToolchain || echo "Metal toolchain already installed"
+
 # 5. archive unsigned (no Apple account needed)
 set -o pipefail
 # Podfile pins OnDeviceLAS.xcodeproj -> pod install regenerates
