@@ -4570,6 +4570,46 @@ actor LocalAPIServer {
     /// its own on-device debugger, in one body. Read-only, authenticated like
     /// every other route, and cheap — no model work happens here, so it stays
     /// safe to poll while a generation is running.
+    /// Instantaneous CPU load across all cores, sampled against the previous
+    /// call. iOS exposes no public temperature in °C, but CPU load and the
+    /// thermal state together are what actually tell you the phone is working.
+    private static var cpuSample: (busy: Double, total: Double)?
+    private static let cpuSampleLock = NSLock()
+
+    private static func cpuLoadPercent() -> Double {
+        var coreCount: natural_t = 0
+        var info: processor_info_array_t?
+        var infoCount: mach_msg_type_number_t = 0
+        guard host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+                                  &coreCount, &info, &infoCount) == KERN_SUCCESS,
+              let info else { return 0 }
+        defer {
+            vm_deallocate(mach_task_self_,
+                          vm_address_t(UInt(bitPattern: info)),
+                          vm_size_t(infoCount) * vm_size_t(MemoryLayout<integer_t>.stride))
+        }
+        var busy: Double = 0
+        var total: Double = 0
+        for cpu in 0..<Int(coreCount) {
+            let base = Int(CPU_STATE_MAX) * cpu
+            let user = Double(info[base + Int(CPU_STATE_USER)])
+            let system = Double(info[base + Int(CPU_STATE_SYSTEM)])
+            let nice = Double(info[base + Int(CPU_STATE_NICE)])
+            let idle = Double(info[base + Int(CPU_STATE_IDLE)])
+            busy += user + system + nice
+            total += user + system + nice + idle
+        }
+        cpuSampleLock.lock()
+        defer { cpuSampleLock.unlock() }
+        let previous = cpuSample
+        cpuSample = (busy, total)
+        guard let previous,
+              total > previous.total, busy >= previous.busy else { return 0 }
+        let deltaBusy = busy - previous.busy
+        let deltaTotal = total - previous.total
+        return max(0, min(100, deltaBusy / deltaTotal * 100))
+    }
+
     private func systemStatus(_ connection: NWConnection) async {
         let snapshot: [String: Any] = await MainActor.run {
             let model = CodingAssistantService.shared.activeModel
@@ -4601,6 +4641,8 @@ actor LocalAPIServer {
                 "app_build": info["CFBundleVersion"] as? String ?? "",
                 "uptime_seconds": Int(ProcessInfo.processInfo.systemUptime),
                 // environment
+                "cpu_load_percent": Self.cpuLoadPercent(),
+                "core_count": ProcessInfo.processInfo.activeProcessorCount,
                 "thermal_state": Self.thermalStateName(ProcessInfo.processInfo.thermalState),
                 "low_power_mode": ProcessInfo.processInfo.isLowPowerModeEnabled,
                 "heavy_work_blocked": DeviceSafetyMonitor.shared.shouldStopHeavyWork,

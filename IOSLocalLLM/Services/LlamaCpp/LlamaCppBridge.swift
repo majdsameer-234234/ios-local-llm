@@ -159,8 +159,8 @@ final class LlamaCppVLM: @unchecked Sendable {
         gpuLayers: Int32 = 999
     ) throws {
         self.configuredThreads = nThreads
-        self.configuredContextSize = contextSize
         Self.ensureBackendInit()
+        Self.normaliseCacheDefaults()
 
         // 1. Load the text LLM. Default params enable mmap on iOS
         //    which lets the OS page weight bytes out under
@@ -172,6 +172,23 @@ final class LlamaCppVLM: @unchecked Sendable {
             throw LlamaCppError.modelLoadFailed(llmPath)
         }
         self.model = m
+
+        // 1b. Size the KV cache against the memory iOS will actually hand this
+        //     process. Without this, llama.cpp walks into the Metal allocator
+        //     with a cache that cannot fit and the process is killed - that is
+        //     the "it crashes when I raise the context" report. The weights are
+        //     already mapped at this point, so only the cache is being sized.
+        let fitted = Self.fittedContextSize(model: m, requested: contextSize)
+        if fitted < contextSize {
+            Diagnostics.shared.breadcrumb(
+                "context clamped \(contextSize) -> \(fitted): KV cache will not fit",
+                category: "assistant"
+            )
+            // Persist the real number so /v1/models and the server card stop
+            // advertising a context the device cannot allocate.
+            UserDefaults.standard.set(Int(fitted), forKey: "ggufContextLength")
+        }
+        self.configuredContextSize = fitted
 
         // 2. Create the inference context. n_batch is the max
         //    tokens per llama_decode call; image embeddings can
@@ -764,6 +781,59 @@ final class LlamaCppVLM: @unchecked Sendable {
             }
         }
         return (piece, false)
+    }
+
+    /// One-time move off f16. A quantised cache is the whole point of the K/V
+    /// pickers - the same tokens cost about a quarter of f16 at q4_0 - but a
+    /// device that never touched the picker would keep f16 forever and then a
+    /// larger context looks like a crash. Choice is respected once it is made.
+    private static func normaliseCacheDefaults() {
+        let marker = "ggufKVCacheQuantisedDefault2027"
+        guard !UserDefaults.standard.bool(forKey: marker) else { return }
+        if UserDefaults.standard.string(forKey: "ggufKVCacheTypeK") == nil {
+            UserDefaults.standard.set("q8_0", forKey: "ggufKVCacheTypeK")
+        }
+        if UserDefaults.standard.string(forKey: "ggufKVCacheTypeV") == nil {
+            UserDefaults.standard.set("q4_0", forKey: "ggufKVCacheTypeV")
+        }
+        UserDefaults.standard.set(true, forKey: marker)
+    }
+
+    /// Bytes per KV element for a cache type name.
+    private static func kvBytesPerElement(_ type: String) -> Double {
+        switch type {
+        case "q8_0": return 1.0625      // 8.5 bits
+        case "q4_0": return 0.5625      // 4.5 bits
+        default:     return 2.0         // f16
+        }
+    }
+
+    /// Largest context whose KV cache still fits in the memory this process can
+    /// hold. A quantised cache is what makes long contexts reachable on a
+    /// phone: the same tokens cost roughly a quarter of f16 at q4_0.
+    private static func fittedContextSize(model: OpaquePointer, requested: UInt32) -> UInt32 {
+        let layers = Double(llama_model_n_layer(model))
+        let headsKV = Double(llama_model_n_head_kv(model))
+        let heads = Double(max(llama_model_n_head(model), 1))
+        let embd = Double(llama_model_n_embd(model))
+        guard layers > 0, headsKV > 0, embd > 0 else { return requested }
+
+        let headDim = max(embd / heads, 1)
+        let legacy = UserDefaults.standard.string(forKey: "ggufKVCacheType") ?? "f16"
+        let typeK = UserDefaults.standard.string(forKey: "ggufKVCacheTypeK") ?? legacy
+        let typeV = UserDefaults.standard.string(forKey: "ggufKVCacheTypeV") ?? legacy
+        let bytesPerToken = layers * headsKV * headDim
+            * (kvBytesPerElement(typeK) + kvBytesPerElement(typeV))
+        guard bytesPerToken > 0 else { return requested }
+
+        // processAvailableMemory is the headroom left once the resident weights
+        // are counted. Keep a slice back for the compute graph, Metal scratch
+        // buffers and the rest of the app.
+        let usable = Double(MemoryAdvisor.processAvailableMemory) - 768 * 1024 * 1024
+        guard usable > 0 else { return min(requested, 2_048) }
+
+        let fits = usable / bytesPerToken
+        return min(requested, UInt32(max(512, min(fits, Double(UInt32.max)))))
     }
 
     /// KV cache precision. At f16 Spark's cache costs about 4 KB per token per

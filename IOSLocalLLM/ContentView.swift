@@ -660,8 +660,8 @@ private struct LASHomeServerCard: View {
     @AppStorage("ggufContextLength") private var contextTokens = 4_096
     /// KV cache precision for GGUF models. Same key the llama.cpp bridge reads
     /// (`ggufKVCacheType`); q8_0 / q4_0 also switch Flash Attention on there.
-    @AppStorage("ggufKVCacheTypeK") private var kvTypeK = "f16"
-    @AppStorage("ggufKVCacheTypeV") private var kvTypeV = "f16"
+    @AppStorage("ggufKVCacheTypeK") private var kvTypeK = "q8_0"
+    @AppStorage("ggufKVCacheTypeV") private var kvTypeV = "q4_0"
 
     var body: some View {
         VStack(alignment: .leading, spacing: LASDesignTokens.component) {

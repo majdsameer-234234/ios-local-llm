@@ -30,6 +30,28 @@ jobs:
           pod --version || true
           sw_vers
 
+      - name: Cache native frameworks
+        uses: actions/cache@v4
+        with:
+          path: |
+            ThirdParty/llama.cpp/build-apple
+            ThirdParty/whisper.cpp/build-apple
+          key: native-${{ runner.os }}-llama-b10830-${{ hashFiles('scripts/build_native_frameworks.sh', 'Patches/*') }}
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: Pods
+          key: pods-${{ runner.os }}-${{ hashFiles('Podfile.lock') }}
+
+      - name: Cache Xcode build products
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: derived-${{ runner.os }}-${{ hashFiles('project.yml', 'Podfile.lock') }}-${{ github.sha }}
+          restore-keys: |
+            derived-${{ runner.os }}-${{ hashFiles('project.yml', 'Podfile.lock') }}-
+
       - name: Build IPA
         run: |
           chmod +x CODEMAGIC_BUILD_SCRIPT.sh
