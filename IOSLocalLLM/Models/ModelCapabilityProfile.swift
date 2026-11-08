@@ -311,6 +311,31 @@ struct ModelCapabilityProfile: Equatable, Sendable {
             )
         }
 
+        // Spark X2.6 (GGUF arch spark2_5). Its template opens <think> by
+        // default, so without a family rule the profile falls through to
+        // "unknown": thinking gets switched off and the tags are left unparsed,
+        // which is why the app showed no reasoning at all. Measured from the
+        // shipped Q4_K_M file: 36 layers, 4 KV heads, 256-dim heads.
+        if identity.contains("spark") {
+            let context = min(max(4_096, catalogContextLength), 131_072)
+            return .init(
+                family: .generic,
+                modelContextLength: max(context, catalogContextLength),
+                configuredContextLength: context,
+                maximumKVCacheTokens: context,
+                maximumOutputTokens: 4_096,
+                kvBits: 4,
+                prefillStepSize: 128,
+                toolParser: .none,
+                reasoningParser: .qwen3,
+                parallelTools: .sequential,
+                supportsThinkingToggle: true,
+                usesChatTemplateOverride: false,
+                requiresYaRNContextExtension: false,
+                estimatedKVCacheBytes: Int64(context) * 41_472
+            )
+        }
+
         let context = max(2_048, catalogContextLength)
         return .init(
             family: .generic,
