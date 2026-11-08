@@ -770,17 +770,40 @@ final class LlamaCppVLM: @unchecked Sendable {
     /// layer, so this is what makes long contexts reachable on a phone. A
     /// quantised V cache requires Flash Attention, so it is switched on with it.
     private static func applyKVCacheType(_ params: inout llama_context_params) {
-        switch UserDefaults.standard.string(forKey: "ggufKVCacheType") ?? "f16" {
+        // K and V are quantised independently by llama.cpp and carry different
+        // accuracy costs, so each has its own key. ggufKVCacheType is the older
+        // single knob and still works as the default for both.
+        let legacy = UserDefaults.standard.string(forKey: "ggufKVCacheType") ?? "f16"
+        let typeK = UserDefaults.standard.string(forKey: "ggufKVCacheTypeK") ?? legacy
+        let typeV = UserDefaults.standard.string(forKey: "ggufKVCacheTypeV") ?? legacy
+        var quantised = false
+
+        switch typeK {
         case "q8_0":
             params.type_k = GGML_TYPE_Q8_0
-            params.type_v = GGML_TYPE_Q8_0
-            params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+            quantised = true
         case "q4_0":
             params.type_k = GGML_TYPE_Q4_0
-            params.type_v = GGML_TYPE_Q4_0
-            params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
+            quantised = true
         default:
             break
+        }
+
+        switch typeV {
+        case "q8_0":
+            params.type_v = GGML_TYPE_Q8_0
+            quantised = true
+        case "q4_0":
+            params.type_v = GGML_TYPE_Q4_0
+            quantised = true
+        default:
+            break
+        }
+
+        // A quantised cache needs Flash Attention; without it llama.cpp quietly
+        // keeps f16, which is why the memory looked unchanged before.
+        if quantised {
+            params.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED
         }
     }
 

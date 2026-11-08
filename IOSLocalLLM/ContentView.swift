@@ -660,7 +660,8 @@ private struct LASHomeServerCard: View {
     @AppStorage("ggufContextLength") private var contextTokens = 4_096
     /// KV cache precision for GGUF models. Same key the llama.cpp bridge reads
     /// (`ggufKVCacheType`); q8_0 / q4_0 also switch Flash Attention on there.
-    @AppStorage("ggufKVCacheType") private var kvCacheType = "f16"
+    @AppStorage("ggufKVCacheTypeK") private var kvTypeK = "f16"
+    @AppStorage("ggufKVCacheTypeV") private var kvTypeV = "f16"
 
     var body: some View {
         VStack(alignment: .leading, spacing: LASDesignTokens.component) {
@@ -878,19 +879,29 @@ private struct LASHomeServerCard: View {
             }
 
             VStack(alignment: .leading, spacing: LASDesignTokens.tight) {
-                Text("KV cache precision")
+                Text("K cache precision")
                     .font(.callout)
-                Picker("KV cache precision", selection: $kvCacheType) {
+                Picker("K cache precision", selection: $kvTypeK) {
                     Text("f16").tag("f16")
                     Text("q8_0").tag("q8_0")
                     Text("q4_0").tag("q4_0")
                 }
                 .pickerStyle(.segmented)
-                .accessibilityLabel("KV cache precision")
-                .accessibilityHint("Quantising the KV cache trades a little precision for a much longer context")
+                .accessibilityLabel("K cache precision")
+
+                Text("V cache precision")
+                    .font(.callout)
+                    .padding(.top, 4)
+                Picker("V cache precision", selection: $kvTypeV) {
+                    Text("f16").tag("f16")
+                    Text("q8_0").tag("q8_0")
+                    Text("q4_0").tag("q4_0")
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("V cache precision")
             }
 
-            Text("q8_0 roughly halves the KV cache, q4_0 quarters it, so the same phone holds a longer context. Both switch Flash Attention on automatically. f16 is the default and the most accurate.")
+            Text("K and V are quantised separately. q8_0 roughly halves that half of the cache, q4_0 quarters it. V is usually the one that costs accuracy, so K q8_0 with V f16 is a normal trade. Any quantised setting switches Flash Attention on automatically; f16 is the default and the most accurate.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
