@@ -183,9 +183,19 @@ struct ModelCapabilityProfile: Equatable, Sendable {
     }
 
     static func resolve(for model: AssistantModel) -> Self {
-        resolve(
+        // For a GGUF model the user's own context setting is the truth. An
+        // imported file carries a 4096 catalog default, and trusting it made the
+        // API advertise 4096 while the app was happy to run more - so every
+        // client compacted after two messages no matter what the card said.
+        let catalog: Int
+        if model.runtime == .llamaCpp {
+            catalog = max(model.contextWindowTokens, Int(LlamaCppVLMExecutionProfile.userContextSize))
+        } else {
+            catalog = model.contextWindowTokens
+        }
+        return resolve(
             repoID: model.repoID,
-            catalogContextLength: model.contextWindowTokens,
+            catalogContextLength: catalog,
             supportsThinking: model.supportsThinking
         )
     }
